@@ -10,6 +10,7 @@ import org.broadinstitute.hellbender.engine.ReferenceFileSource;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.BaseUtils;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
+import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.io.IOUtils;
 import org.broadinstitute.hellbender.utils.read.ReadUtils;
 import org.testng.Assert;
@@ -18,10 +19,7 @@ import org.testng.annotations.Test;
 
 import java.io.*;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 /**
  * A unit test suite for the {@link FuncotatorUtils} class.
@@ -1258,5 +1256,40 @@ public class FuncotatorUtilsUnitTest extends GATKBaseTest {
 
         final String basesInWindow = FuncotatorUtils.getBasesInWindowAroundReferenceAllele(refAllele, altAllele, strand, referenceWindow, referenceContext);
         Assert.assertEquals( basesInWindow, expected );
+    }
+
+    @Test(enabled = false)
+    public void testSequenceDictionaryMD5Sums() {
+
+        final String refDir  = "/Users/jonn/Development/references" + File.separator;
+
+        final Map<String, List<String>> nameFilenameMap = new LinkedHashMap<>();
+
+        nameFilenameMap.put("BROAD REF", Arrays.asList("Homo_sapiens_assembly19.fasta", ""));
+        nameFilenameMap.put("B37",       Arrays.asList("human_g1k_v37.fasta", ""));
+        nameFilenameMap.put("GRCh37",    Arrays.asList("GRCh37.p13.genome.fasta", "chr"));
+        nameFilenameMap.put("HG19",      Arrays.asList("ucsc.hg19.fasta", "chr"));
+
+        final int chr3Length = 198022430;
+        final int chrYLength = 59373566;
+
+        for ( final Map.Entry<String, List<String>> entry : nameFilenameMap.entrySet() ) {
+
+            final String fileName = entry.getValue().get(0);
+            final String contigDecorator = entry.getValue().get(1);
+
+            final ReferenceDataSource referenceDataSource = ReferenceDataSource.of(IOUtils.getPath(refDir + fileName), true);
+
+            System.out.println();
+            System.out.println("================================================================================");
+            System.out.println("|                             " + entry.getKey() + " (" + fileName + ")");
+            System.out.println("================================================================================");
+
+            Assert.assertEquals(referenceDataSource.queryAndPrefetch(contigDecorator + "3", 1, chr3Length).getBases().length, chr3Length);
+            Assert.assertEquals(referenceDataSource.queryAndPrefetch(contigDecorator + "Y", 1, chrYLength).getBases().length, chrYLength);
+
+            System.out.println("CHR 3: " + Utils.calcMD5(referenceDataSource.queryAndPrefetch(contigDecorator + "3", 1, chr3Length).getBases()));
+            System.out.println("CHR Y: " + Utils.calcMD5(referenceDataSource.queryAndPrefetch(contigDecorator + "Y", 1, chrYLength).getBases()));
+        }
     }
 }

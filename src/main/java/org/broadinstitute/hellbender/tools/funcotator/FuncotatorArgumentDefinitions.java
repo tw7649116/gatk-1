@@ -37,6 +37,8 @@ public class FuncotatorArgumentDefinitions {
     public static final String ANNOTATION_OVERRIDES_LONG_NAME = "annotation-override";
     public static final List<String> ANNOTATION_OVERRIDES_DEFAULT_VALUE = new ArrayList<>();
 
+    public static final String ALLOW_HG19_GENCODE_B37_CONTIG_MATCHING = "allow-hg19-gencode-b37-contig-matching";
+
     // ------------------------------------------------------------
     // Helper Types:
 

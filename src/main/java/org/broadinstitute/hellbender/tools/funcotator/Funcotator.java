@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.tools.funcotator;
 import htsjdk.tribble.Feature;
 import htsjdk.tribble.util.ParsingUtils;
 import htsjdk.variant.variantcontext.VariantContext;
+import htsjdk.variant.variantcontext.VariantContextBuilder;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.broadinstitute.barclay.argparser.Argument;
@@ -272,6 +273,13 @@ public class Funcotator extends VariantWalker {
     )
     protected List<String> annotationOverrides = FuncotatorArgumentDefinitions.ANNOTATION_OVERRIDES_DEFAULT_VALUE;
 
+    @Argument(
+            fullName = FuncotatorArgumentDefinitions.ALLOW_HG19_GENCODE_B37_CONTIG_MATCHING,
+            optional = true,
+            doc = "Allow for the HG19 Reference version of GENCODE to match with B37 Contig names.  (May create erroneous annotations in some contigs where B37 != HG19)."
+    )
+    protected boolean allowHg19GencodeContigNamesWithB37;
+
     //==================================================================================================================
 
     private OutputRenderer outputRenderer;
@@ -331,7 +339,9 @@ public class Funcotator extends VariantWalker {
             throw new GATKException("No reference context for variant.  Cannot annotate!");
         }
 
-        if ( inputReferenceIsB37 == null ) {
+        if ( allowHg19GencodeContigNamesWithB37 &&
+                (referenceVersion == FuncotatorArgumentDefinitions.ReferenceVersionType.hg19) &&
+                (inputReferenceIsB37 == null) ) {
             // NOTE AND WARNING:
             // hg19 is from ucsc. b37 is from the genome reference consortium. ucsc decided the grc version had crap in it, so they blocked out some of the bases, aka "masked" them
             // so the lengths of the contigs are the same, the bases are just _slightly_ different
@@ -403,15 +413,21 @@ public class Funcotator extends VariantWalker {
         // Get our feature inputs:
         final List<Feature> featureList = new ArrayList<>();
 
+        // Create a variant context for annotation that has a new contig based on whether we need to overwrite the
+        // contig names in the next section.
+        final VariantContextBuilder variantContextBuilderForFixedContigForGencode = new VariantContextBuilder(variant);
+
         // Check to see if we need to query with a different reference convention (i.e. "chr1" vs "1").
-        if ( (referenceVersion == FuncotatorArgumentDefinitions.ReferenceVersionType.hg19) && inputReferenceIsB37 ) {
+        if ( allowHg19GencodeContigNamesWithB37 && inputReferenceIsB37 ) {
             // Construct a new contig and new interval with no "chr" in front of it:
             final String hg19Contig = FuncotatorUtils.convertB37ContigToHg19Contig( variant.getContig() );
             final SimpleInterval hg19Interval = new SimpleInterval(hg19Contig, variant.getStart(), variant.getEnd());
 
+            variantContextBuilderForFixedContigForGencode.chr(hg19Contig);
+
             // Get our features for the new interval:
             for ( final FeatureInput<? extends Feature> featureInput : manualFeatureInputs ) {
-                featureList.addAll(featureContext.getValues(featureInput, hg19Interval)); 
+                featureList.addAll(featureContext.getValues(featureInput, hg19Interval));
             }
         }
         else {
@@ -423,13 +439,16 @@ public class Funcotator extends VariantWalker {
         // Create a place to keep our funcotations:
         final List<Funcotation> funcotations = new ArrayList<>();
 
+        // Get our VariantContext for annotation:
+        final VariantContext variantContextFixedContigForGencode = variantContextBuilderForFixedContigForGencode.make();
+
         // Annotate with Gencode first:
 
         // Create a list of GencodeFuncotation to use for other Data Sources:
         final List<GencodeFuncotation> gencodeFuncotations = new ArrayList<>();
 
         for ( final GencodeFuncotationFactory factory : gencodeFuncotationFactories ) {
-            final List<Funcotation> funcotationsFromGencodeFactory = factory.createFuncotations(variant, referenceContext, featureList);
+            final List<Funcotation> funcotationsFromGencodeFactory = factory.createFuncotations(variantContextFixedContigForGencode, referenceContext, featureList);
             funcotations.addAll(funcotationsFromGencodeFactory);
             gencodeFuncotations.addAll(
                     funcotationsFromGencodeFactory.stream()
@@ -448,6 +467,7 @@ public class Funcotator extends VariantWalker {
 
             funcotations.addAll( funcotationFactory.createFuncotations(variant, referenceContext, featureList, gencodeFuncotations) );
         }
+
         outputRenderer.write(variant, funcotations);
     }
 

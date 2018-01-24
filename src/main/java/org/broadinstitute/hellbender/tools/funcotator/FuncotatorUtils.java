@@ -1664,6 +1664,10 @@ public final class FuncotatorUtils {
     public static boolean isSequenceDictionaryUsingB37Reference(final SAMSequenceDictionary sequenceDictionary) {
         // Check to make sure all our sequences are accounted for in the given dictionary.
 
+        if ( sequenceDictionary == null ) {
+            return false;
+        }
+
         for ( final SAMSequenceRecord b37SequenceRecord : B37_SEQUENCE_DICTIONARY.getSequences() ) {
             // Now we check the Name, Length, and MD5Sum (if present) of all records:
 
