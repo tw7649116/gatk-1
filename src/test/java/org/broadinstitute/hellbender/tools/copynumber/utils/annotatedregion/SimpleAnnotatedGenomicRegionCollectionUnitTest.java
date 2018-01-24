@@ -21,6 +21,8 @@ public class SimpleAnnotatedGenomicRegionCollectionUnitTest  extends GATKBaseTes
             "copynumber/utils/combine-segment-breakpoints-with-legacy-header-learning-combined-copy-number.tsv");
     private static final File TEST_CONFIG = new File(toolsTestDir,
             "copynumber/utils/test.config");
+    private static final File TEST_NAMED_CONFIG = new File(toolsTestDir,
+            "copynumber/utils/test_col_names.config");
 
 
     @Test
@@ -97,6 +99,10 @@ public class SimpleAnnotatedGenomicRegionCollectionUnitTest  extends GATKBaseTes
         final SimpleAnnotatedGenomicRegionCollection simpleAnnotatedGenomicRegions =
                 SimpleAnnotatedGenomicRegionCollection.create(TEST_FILE.toPath(), TEST_CONFIG.toPath(), headersOfInterest);
 
+        assertLearningSampleTest(headersOfInterest, simpleAnnotatedGenomicRegions);
+    }
+
+    private void assertLearningSampleTest(Set<String> headersOfInterest, SimpleAnnotatedGenomicRegionCollection simpleAnnotatedGenomicRegions) {
         Assert.assertEquals(simpleAnnotatedGenomicRegions.size(), 15);
         Assert.assertTrue(simpleAnnotatedGenomicRegions.getRecords().stream()
                 .allMatch(s -> s.getAnnotations().entrySet().size() == 2));
@@ -122,6 +128,15 @@ public class SimpleAnnotatedGenomicRegionCollectionUnitTest  extends GATKBaseTes
         );
 
         Assert.assertEquals(simpleAnnotatedGenomicRegions.getRecords().subList(0, gtRegions.size()), gtRegions);
+    }
+
+    @Test
+    public void basicTestTribbleWithHeadersOfInterestColumnNamesSpecified() throws IOException {
+        final Set<String> headersOfInterest = Sets.newHashSet(Arrays.asList("name", "learning_SAMPLE_0"));
+        final SimpleAnnotatedGenomicRegionCollection simpleAnnotatedGenomicRegions =
+                SimpleAnnotatedGenomicRegionCollection.create(TEST_FILE.toPath(), TEST_NAMED_CONFIG.toPath(), headersOfInterest);
+
+        assertLearningSampleTest(headersOfInterest, simpleAnnotatedGenomicRegions);
     }
 
 }

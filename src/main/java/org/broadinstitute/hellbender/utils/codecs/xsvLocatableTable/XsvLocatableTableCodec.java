@@ -1,6 +1,7 @@
 package org.broadinstitute.hellbender.utils.codecs.xsvLocatableTable;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMTextHeaderCodec;
 import htsjdk.samtools.util.BufferedLineReader;
@@ -19,10 +20,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -71,14 +70,23 @@ public final class XsvLocatableTableCodec extends AsciiFeatureCodec<XsvTableFeat
     //==================================================================================================================
     // Private Members:
 
-    /** Column number from which to get the contig string for each entry. */
-    private int contigColumn;
+    /** Column name (or index) from which to get the contig string for each entry.  As specified in the input.*/
+    private String inputContigColumn;
 
-    /** Column number from which to get the start position for each entry. */
-    private int startColumn;
+    /** Column name (or index) from which to get the start position for each entry.  As specified in the input. */
+    private String inputStartColumn;
 
-    /** Column number from which to get the end position for each entry. */
-    private int endColumn;
+    /** Column name (or index) from which to get the end position for each entry.  As specified in the input. */
+    private String inputEndColumn;
+
+    /** Column name from which to get the contig string for each entry. */
+    private String finalContigColumn;
+
+    /** Column name from which to get the start position for each entry. */
+    private String finalStartColumn;
+
+    /** Column name from which to get the end position for each entry. */
+    private String finalEndColumn;
 
     /** Delimiter for entries in this XSV Table. */
     private String delimiter;
@@ -88,6 +96,12 @@ public final class XsvLocatableTableCodec extends AsciiFeatureCodec<XsvTableFeat
 
     /** The XSV Table Header */
     private List<String> header;
+
+    /** The XSV Table Header */
+    private Map<String, Integer> headerToIndex;
+
+    /** The locatable columns, once determined, in contig, start, end order. */
+    private List<String> locatableColumns;
 
     /** The current position in the file that is being read. */
     private long currentLine = 0;
@@ -173,9 +187,16 @@ public final class XsvLocatableTableCodec extends AsciiFeatureCodec<XsvTableFeat
             }
         }
 
-        return new XsvTableFeature(contigColumn, startColumn, endColumn, header, split, dataSourceName);
+        return new XsvTableFeature(headerToIndex.get(finalContigColumn), headerToIndex.get(finalStartColumn),
+                headerToIndex.get(finalEndColumn), header, split, dataSourceName);
     }
 
+    /**
+     * Dev note:  We also determine the actual locatable columns here.
+     *
+     * @param reader
+     * @return
+     */
     @Override
     public List<String> readActualHeader(final LineIterator reader) {
         // All leading lines with comments / header info are headers:
@@ -193,6 +214,14 @@ public final class XsvLocatableTableCodec extends AsciiFeatureCodec<XsvTableFeat
                 header = Arrays.stream(line.split(delimiter))
                         .map(x -> StringUtils.isEmpty(dataSourceName) ? x : dataSourceName + "_" + x)
                         .collect(Collectors.toCollection(ArrayList::new));
+                headerToIndex = IntStream.range(0, header.size()).boxed()
+                        .collect(Collectors.toMap(i-> header.get(i), Function.identity()));
+
+                finalContigColumn = isInteger(inputContigColumn) ? header.get(Integer.valueOf(inputContigColumn)) : inputContigColumn;
+                finalStartColumn = isInteger(inputStartColumn) ? header.get(Integer.valueOf(inputStartColumn)) : inputStartColumn;
+                finalEndColumn = isInteger(inputEndColumn) ? header.get(Integer.valueOf(inputEndColumn)) : inputEndColumn;
+
+                locatableColumns = Lists.newArrayList(finalContigColumn, finalStartColumn, finalEndColumn);
 
                 return header;
             }
@@ -286,9 +315,9 @@ public final class XsvLocatableTableCodec extends AsciiFeatureCodec<XsvTableFeat
         final Properties configProperties = getAndValidateConfigFileContents(configFilePath);
 
         // Get the properties and remove the leading/trailing whitespace if there is any:
-        contigColumn   = Integer.valueOf(configProperties.getProperty(CONFIG_FILE_CONTIG_COLUMN_KEY).replaceAll("^\\s+", "").replaceAll("\\s+$", ""));
-        startColumn    = Integer.valueOf(configProperties.getProperty(CONFIG_FILE_START_COLUMN_KEY).replaceAll("^\\s+", "").replaceAll("\\s+$", ""));
-        endColumn      = Integer.valueOf(configProperties.getProperty(CONFIG_FILE_END_COLUMN_KEY).replaceAll("^\\s+", "").replaceAll("\\s+$", ""));
+        inputContigColumn = configProperties.getProperty(CONFIG_FILE_CONTIG_COLUMN_KEY).replaceAll("^\\s+", "").replaceAll("\\s+$", "");
+        inputStartColumn = configProperties.getProperty(CONFIG_FILE_START_COLUMN_KEY).replaceAll("^\\s+", "").replaceAll("\\s+$", "");
+        inputEndColumn = configProperties.getProperty(CONFIG_FILE_END_COLUMN_KEY).replaceAll("^\\s+", "").replaceAll("\\s+$", "");
         dataSourceName = configProperties.getProperty(CONFIG_FILE_DATA_SOURCE_NAME_KEY).replaceAll("^\\s+", "").replaceAll("\\s+$", "");
 
         // Get the delimiter - we do NOT remove whitespace here on purpose:
@@ -310,8 +339,7 @@ public final class XsvLocatableTableCodec extends AsciiFeatureCodec<XsvTableFeat
     }
 
     /**
-     *
-     * @return copy of the sam file header created from the input file.
+     * @return copy of the sam file header created from the input file.  {@code null} is possible
      */
     public SAMFileHeader createSamFileHeader() {
         final LineReader reader = BufferedLineReader.fromString(StringUtils.join(samFileHeaderAsStrings, "\n"));
@@ -322,18 +350,40 @@ public final class XsvLocatableTableCodec extends AsciiFeatureCodec<XsvTableFeat
     /**
      * Get the header from this {@link XsvLocatableTableCodec} without the columns that contain location information.
      * Specifically the columns specified by the following fields are not included:
-     *  {@link XsvLocatableTableCodec#contigColumn}
-     *  {@link XsvLocatableTableCodec#startColumn}
-     *  {@link XsvLocatableTableCodec#endColumn}
+     *  {@link XsvLocatableTableCodec#inputContigColumn}
+     *  {@link XsvLocatableTableCodec#inputStartColumn}
+     *  {@link XsvLocatableTableCodec#inputEndColumn}
      * @return The header for this {@link XsvLocatableTableCodec} without location columns.
      */
     public List<String> getHeaderWithoutLocationColumns() {
-        return IntStream.range(0, header.size()).boxed()
-                .filter(i -> (i != contigColumn) && (i != startColumn) && (i != endColumn))
-                .map(i -> header.get(i)).collect(Collectors.toList());
+        return header.stream().filter(h -> !locatableColumns.contains(h))
+                .collect(Collectors.toList());
     }
 
     //==================================================================================================================
     // Helper Data Types:
 
+    /** Slightly modified from:
+     * https://stackoverflow.com/questions/237159/whats-the-best-way-to-check-if-a-string-represents-an-integer-in-java
+     */
+    private static boolean isInteger(final String str) {
+        if (StringUtils.isEmpty(str)) {
+            return false;
+        }
+        final int length = str.length();
+        int i = 0;
+        if (str.charAt(0) == '-') {
+            if (length == 1) {
+                return false;
+            }
+            i = 1;
+        }
+        for (; i < length; i++) {
+            char c = str.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
 }
