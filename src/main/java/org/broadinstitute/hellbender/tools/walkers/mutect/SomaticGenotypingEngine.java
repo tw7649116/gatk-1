@@ -12,13 +12,11 @@ import org.apache.commons.math3.util.FastMath;
 import org.apache.log4j.Logger;
 import org.broadinstitute.hellbender.engine.FeatureContext;
 import org.broadinstitute.hellbender.engine.ReferenceContext;
-import org.broadinstitute.hellbender.tools.walkers.genotyper.GenotypingOutputMode;
 import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculator;
 import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculatorProvider;
 import org.broadinstitute.hellbender.tools.walkers.haplotypecaller.AssemblyBasedCallerGenotypingEngine;
 import org.broadinstitute.hellbender.tools.walkers.haplotypecaller.AssemblyBasedCallerUtils;
 import org.broadinstitute.hellbender.tools.walkers.haplotypecaller.AssemblyResultSet;
-import org.broadinstitute.hellbender.tools.walkers.haplotypecaller.ReferenceConfidenceMode;
 import org.broadinstitute.hellbender.utils.*;
 import org.broadinstitute.hellbender.utils.genotyper.LikelihoodMatrix;
 import org.broadinstitute.hellbender.utils.genotyper.ReadLikelihoods;
@@ -120,7 +118,7 @@ public class SomaticGenotypingEngine extends AssemblyBasedCallerGenotypingEngine
             // converting ReadLikelihoods<Haplotype> to ReadLikeliHoods<Allele>
             final ReadLikelihoods<Allele> log10Likelihoods = log10ReadLikelihoods.marginalize(alleleMapper,
                     new SimpleInterval(mergedVC).expandWithinContig(ALLELE_EXTENSION, header.getSequenceDictionary()));
-            filterOverlappingReads(log10Likelihoods, mergedVC.getReference(), loc, false);
+            filterOverlappingReads(log10Likelihoods, mergedVC.getReference(), loc);
 
             final LikelihoodMatrix<Allele> log10TumorMatrix = log10Likelihoods.sampleMatrix(log10Likelihoods.indexOfSample(tumorSampleName));
             final Optional<LikelihoodMatrix<Allele>> log10NormalMatrix =
@@ -251,8 +249,11 @@ public class SomaticGenotypingEngine extends AssemblyBasedCallerGenotypingEngine
         return optionalRefIndex.getAsInt();
     }
 
-    private void filterOverlappingReads(final ReadLikelihoods<Allele> likelihoods, final Allele ref, final int location, final boolean retainMismatches) {
+    private void filterOverlappingReads(final ReadLikelihoods<Allele> likelihoods, final Allele ref, final int location) {
+        final OverlappingReadPairStrategy overlapStrategy = MTAC.overlapStrategy;
+        final int numAlleles = likelihoods.numberOfAlleles();
         for (final String sample : likelihoods.samples()) {
+            final LikelihoodMatrix<Allele> sampleMatrix = likelihoods.sampleMatrix(likelihoods.indexOfSample(sample));
             // Get the best alleles of each read and group them by the read name.
             // This puts paired reads from the same fragment together
             final Map<String, List<ReadLikelihoods<Allele>.BestAllele>> fragments = likelihoods.bestAlleles(sample).stream()
@@ -273,11 +274,31 @@ public class SomaticGenotypingEngine extends AssemblyBasedCallerGenotypingEngine
                 final ReadLikelihoods<Allele>.BestAllele mate = pair.getRight();
 
                 if (read.allele.equals(mate.allele)) {
-                    // keep the higher-quality read
-                    readsToDiscard.add(read.likelihood < mate.likelihood ? read.read : mate.read);
-                } else if (retainMismatches) {
-                    // keep the alt read
-                    readsToDiscard.add(read.allele.equals(ref) ? read.read : mate.read);
+                    if (overlapStrategy.isDiscardWorseRead()) {
+                        final GATKRead betterRead = read.likelihood < mate.likelihood ? read.read : mate.read;
+                        final GATKRead worseRead = read.likelihood < mate.likelihood ? mate.read : read.read;
+                        final int betterIndex = sampleMatrix.indexOfRead(betterRead);
+                        final int worseIndex = sampleMatrix.indexOfRead(worseRead);
+                        final int alleleIndex = likelihoods.indexOfAllele(read.allele);
+                        readsToDiscard.add(read.likelihood < mate.likelihood ? read.read : mate.read);
+                        if (overlapStrategy == OverlappingReadPairStrategy.ADD_LIKELIHOODS) {
+                            for (int a = 0; a < numAlleles; a++) {
+                                sampleMatrix.set(a, betterIndex, sampleMatrix.get(a, worseIndex) + sampleMatrix.get(a, betterIndex));
+                            }
+                        } else if (overlapStrategy == OverlappingReadPairStrategy.ADD_PHRED_TEN) {
+                            // subtract 1 (i.e. phred-scaled 10) from all other alleles' likelihoods
+                            for (int a = 0; a < numAlleles; a++) {
+                                if (a != alleleIndex) {
+                                    sampleMatrix.set(a, betterIndex, sampleMatrix.get(a, betterIndex) - 1);
+                                }
+                            }
+                        } else if (overlapStrategy == OverlappingReadPairStrategy.SET_TO_PHRED_FORTY_FIVE) {
+                            // set all other allele likelihoods to -4.5 and this allele to 0
+                            for (int a = 0; a < numAlleles; a++) {
+                                sampleMatrix.set(a, betterIndex, a == alleleIndex ? 0 : -4.5);
+                            }
+                        }
+                    }
                 } else {
                     // throw out both
                     readsToDiscard.add(read.read);

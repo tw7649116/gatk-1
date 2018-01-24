@@ -60,6 +60,10 @@ public class M2ArgumentCollection extends AssemblyBasedCallerArgumentCollection 
                     "heterozygosity rate such as 0.001 is reasonable.", optional = true)
     public double afOfAllelesNotInGermlineResource = 0.001;
 
+    @Argument(fullName="overlapping-read-strategy", shortName = "overlap-strategy",
+            doc="How to handle overlapping paired reads", optional = true)
+    public OverlappingReadPairStrategy overlapStrategy = OverlappingReadPairStrategy.KEEP_HIGHER_QUALITY_READ;
+
     /**
      * Prior log-10 probability that any given site has a somatic allele. Impacts germline probability calculation.
      * The workflow uses this parameter only towards the germline event filter. It does NOT relate to the LOD threshold.
