@@ -274,11 +274,11 @@ public class Funcotator extends VariantWalker {
     protected List<String> annotationOverrides = FuncotatorArgumentDefinitions.ANNOTATION_OVERRIDES_DEFAULT_VALUE;
 
     @Argument(
-            fullName = FuncotatorArgumentDefinitions.ALLOW_HG19_GENCODE_B37_CONTIG_MATCHING,
+            fullName = FuncotatorArgumentDefinitions.ALLOW_HG19_GENCODE_B37_CONTIG_MATCHING_LONG_NAME,
             optional = true,
             doc = "Allow for the HG19 Reference version of GENCODE to match with B37 Contig names.  (May create erroneous annotations in some contigs where B37 != HG19)."
     )
-    protected boolean allowHg19GencodeContigNamesWithB37;
+    protected boolean allowHg19GencodeContigNamesWithB37 = FuncotatorArgumentDefinitions.ALLOW_HG19_GENCODE_B37_CONTIG_MATCHING_DEFAULT_VALUE;
 
     //==================================================================================================================
 
