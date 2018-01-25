@@ -9,9 +9,10 @@
   "Mutect2_Multi.scatter_count": 2,
   "Mutect2_Multi.dbsnp": "/home/travis/build/broadinstitute/gatk/src/test/resources/large/dbsnp_138.b37.20.21.vcf",
   "Mutect2_Multi.dbsnp_index": "/home/travis/build/broadinstitute/gatk/src/test/resources/large/dbsnp_138.b37.20.21.vcf.idx",
-  "Mutect2_Multi.is_run_orientation_bias_filter": true,
-  "Mutect2_Multi.is_run_oncotator": true,
+  "Mutect2_Multi.run_orientation_bias_filter": true,
+  "Mutect2_Multi.run_oncotator": true,
   "Mutect2_Multi.preemptible_attempts": 2,
   "Mutect2_Multi.artifact_modes": ["G/T", "C/T"],
+  "Mutect2_Multi.compress_vcfs": true,
   "Mutect2_Multi.onco_ds_local_db_dir": "/root/"
 }
